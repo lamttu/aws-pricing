@@ -17,14 +17,16 @@
 // Load the SDK and UUID
 var AWS = require("aws-sdk");
 
-AWS.config.update({ region: "us-east-1" });
-var pricing = new AWS.Pricing();
+AWS.config.update({ region: "us-east-1" }); //Pricing only offers in us-east-1 or ap-south-1 I'm just picking one of them
+var pricing = new AWS.Pricing(); // Create a pricing client
 
+// These are the parameters that will be used to request the pricing
 var params = {
   FormatVersion: "aws_v1",
   MaxResults: 1,
   ServiceCode: "AmazonEC2",
   Filters: [
+    // Example filter only, we need to work on this to figure out what field we need to request the result we want
     {
       Field: "ServiceCode",
       Type: "TERM_MATCH",
@@ -39,22 +41,16 @@ var params = {
       Field: "location",
       Type: "TERM_MATCH",
       Value: "Asia Pacific (Sydney)"
-    },
-    {
-      Field: "offerTermCode",
-      Type: "TERM_MATCH",
-      Value: "JRTCKXETXF" //On-demand
     }
   ]
 };
 
 pricing.getProducts(params, function(err, data) {
   if (err) console.log(err, err.stack);
-  // an error occurred
   else {
     console.log("got the price");
     var priceList = data["PriceList"][0]["terms"]["OnDemand"];
-    var result = JSON.stringify(priceList);
+    var result = JSON.stringify(priceList); // I'm only showing part of the result but you can stringify data and console.log to see the whole thing
     console.log(result); // successful response
   }
 });

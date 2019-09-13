@@ -15,42 +15,127 @@
  **/
 
 // Load the SDK and UUID
-var AWS = require("aws-sdk");
+const axios = require("axios");
+const HOURS_PER_MONTH = 730;
 
-AWS.config.update({ region: "us-east-1" }); //Pricing only offers in us-east-1 or ap-south-1 I'm just picking one of them
-var pricing = new AWS.Pricing(); // Create a pricing client
-
-// These are the parameters that will be used to request the pricing
-var params = {
-  FormatVersion: "aws_v1",
-  MaxResults: 1,
-  ServiceCode: "AmazonEC2",
-  Filters: [
-    // Example filter only, we need to work on this to figure out what field we need to request the result we want
-    {
-      Field: "ServiceCode",
-      Type: "TERM_MATCH",
-      Value: "AmazonEC2"
-    },
-    {
-      Field: "instanceType",
-      Type: "TERM_MATCH",
-      Value: "r5d.8xlarge"
-    },
-    {
-      Field: "location",
-      Type: "TERM_MATCH",
-      Value: "Asia Pacific (Sydney)"
-    }
-  ]
-};
-
-pricing.getProducts(params, function(err, data) {
-  if (err) console.log(err, err.stack);
-  else {
-    console.log("got the price");
-    var priceList = data["PriceList"][0]["terms"]["OnDemand"];
-    var result = JSON.stringify(priceList); // I'm only showing part of the result but you can stringify data and console.log to see the whole thing
-    console.log(result); // successful response
+async function getExchangeRate() {
+  try {
+    const response = await axios.get(
+      "https://api.exchangeratesapi.io/latest?base=USD&symbols=AUD"
+    );
+    const exchangeRate = response.data["rates"]["AUD"];
+    console.log(exchangeRate);
+    return exchangeRate;
+  } catch (error) {
+    console.log("Something has gone wrong while retrieving exchange rate");
   }
+}
+
+async function getPricingForComputeEngineAzure(exchangeRate) {
+  try {
+    const response = await axios.get(
+      "https://azure.microsoft.com/api/v3/pricing/virtual-machines/calculator/?culture=en-us&discount=mosp&v=20190910-1131-88025"
+    );
+    const smallWindows = response.data["offers"]["windows-d4v3-standard"];
+    const smallWindowsMonthly =
+      smallWindows["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const mediumWindows = response.data["offers"]["windows-d16v3-standard"];
+    const mediumWindowsMonthly =
+      mediumWindows["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const largeWindows = response.data["offers"]["windows-d48v3-standard"];
+    const largeWindowsMonthly =
+      largeWindows["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const smallLinux = response.data["offers"]["linux-d4v3-standard"];
+    const smallLinuxMonthly =
+      smallLinux["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const mediumLinux = response.data["offers"]["linux-d16v3-standard"];
+    const mediumLinuxMonthly =
+      mediumLinux["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const largeLinux = response.data["offers"]["linux-d48v3-standard"];
+    const largeLinuxMonthly =
+      largeLinux["prices"]["perhour"]["australia-southeast"]["value"] *
+      exchangeRate *
+      HOURS_PER_MONTH;
+    const computeEnginePrices = {
+      windows: {
+        small: smallWindowsMonthly,
+        medium: mediumWindowsMonthly,
+        large: largeWindowsMonthly
+      },
+      linux: {
+        small: smallLinuxMonthly,
+        medium: mediumLinuxMonthly,
+        large: largeLinuxMonthly
+      }
+    };
+    return computeEnginePrices;
+  } catch (error) {
+    console.log(
+      "Something has gone wrong while retrieving compute engine pricing for Azure"
+    );
+  }
+}
+
+async function getPricingForStorageAzure(exchangeRate) {
+  try {
+    const response = await axios.get(
+      "https://azure.microsoft.com/api/v2/pricing/managed-disks/calculator/?culture=en-us&discount=mosp&v=20190910-1131-88025"
+    );
+    const operationPrices =
+      response.data["offers"]["transactions-ssd"]["prices"][
+        "australia-southeast"
+      ]["value"] * exchangeRate;
+    const smallDiskPrice =
+      response.data["offers"]["standardssd-e15"]["prices"][
+        "australia-southeast"
+      ]["value"] * exchangeRate;
+    const mediumDiskPrice =
+      response.data["offers"]["standardssd-e20"]["prices"][
+        "australia-southeast"
+      ]["value"] * exchangeRate;
+    const largeDiskPrice =
+      response.data["offers"]["standardssd-e30"]["prices"][
+        "australia-southeast"
+      ]["value"] * exchangeRate;
+    const storagePrice = {
+      operationPrices: operationPrices,
+      smallDiskPrice: smallDiskPrice,
+      mediumDiskPrice: mediumDiskPrice,
+      largeDiskPrice: largeDiskPrice
+    };
+    return storagePrice;
+  } catch (error) {
+    console.log(
+      "Something has gone wrong while retrieving storage pricing for Azure" +
+        error
+    );
+  }
+}
+
+async function getAzureData() {
+  const exchangeRate = await getExchangeRate();
+  const computeEnginePrices = await getPricingForComputeEngineAzure(
+    exchangeRate
+  );
+  const storagePrices = await getPricingForStorageAzure(exchangeRate);
+  const azureData = {};
+  azureData["computeEngine"] = computeEnginePrices;
+  azureData["storage"] = storagePrices;
+  return azureData;
+}
+
+var azureData = {};
+getAzureData().then(response => {
+  azureData = response;
+  console.log(azureData);
 });
